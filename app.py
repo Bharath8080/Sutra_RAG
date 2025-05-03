@@ -104,7 +104,7 @@ def process_documents(uploaded_files, chunk_size=1000, chunk_overlap=100):
     
     # Create embeddings with Gemini instead of OpenAI
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-exp-03-07",
+        model="models/embedding-001",
         google_api_key=gemini_api_key
     )
     
