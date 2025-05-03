@@ -6,7 +6,7 @@ from langchain.schema import HumanMessage
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 api_key = os.getenv("SUTRA_API_KEY")
-gemini_api_key = os.getenv("GOOGLE_API_KEY")  
+embedding_api_key = os.getenv("OPENAI_API_KEY")  
 
 # Page configuration
 st.set_page_config(
@@ -102,13 +102,8 @@ def process_documents(uploaded_files, chunk_size=1000, chunk_overlap=100):
     )
     document_chunks = text_splitter.split_documents(documents)
     
-    # Create embeddings with Gemini instead of OpenAI
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-exp-03-07",
-        google_api_key=gemini_api_key
-    )
-    
-    # Create vector store with Gemini embeddings
+    # Create embeddings and vector store
+    embeddings = OpenAIEmbeddings(api_key=embedding_api_key)
     vectorstore = FAISS.from_documents(document_chunks, embeddings)
     
     # Create conversation chain
@@ -132,7 +127,7 @@ st.markdown(
     )
 
 # Sidebar
-st.sidebar.image("https://framerusercontent.com/images/T5kFJeyNUyAYJBz4PaWuP7Bfr0.png", use_container_width=True)
+st.sidebar.image("https://framerusercontent.com/images/3Ca34Pogzn9I3a7uTsNSlfs9Bdk.png", use_container_width=True)
 with st.sidebar:
     st.title("Settings")
     
@@ -156,7 +151,7 @@ with st.sidebar:
                 st.session_state.documents_processed = True
                 st.success(f"{len(uploaded_files)} documents processed!")
     
-    
+    st.divider()
     st.markdown(f"Responses will be in: **{selected_language}**")
 
 # Main chat area
