@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 api_key = os.getenv("SUTRA_API_KEY")
-gemini_api_key = os.getenv("GOOGLE_API_KEY")  # For Gemini embeddings
+gemini_api_key = os.getenv("GOOGLE_API_KEY")  
 
 # Page configuration
 st.set_page_config(
@@ -76,92 +76,54 @@ if "messages" not in st.session_state:
 if "documents_processed" not in st.session_state:
     st.session_state.documents_processed = False
 
-# Function to validate API keys
-def validate_api_keys():
-    if not api_key:
-        st.sidebar.error("SUTRA_API_KEY is missing in the environment variables.")
-        return False
-    if not gemini_api_key:
-        st.sidebar.error("GOOGLE_API_KEY is missing in the environment variables.")
-        return False
-    return True
-
 # Function to process documents
-def process_documents(uploaded_files, chunk_size=800, chunk_overlap=50):
-    # Validate API keys first
-    if not validate_api_keys():
-        return None
-    
+def process_documents(uploaded_files, chunk_size=1000, chunk_overlap=100):
     documents = []
     temp_dir = tempfile.TemporaryDirectory()
     
-    try:
-        for file in uploaded_files:
-            # Save the uploaded file to a temporary file
-            temp_path = os.path.join(temp_dir.name, file.name)
-            with open(temp_path, "wb") as f:
-                f.write(file.getbuffer())
-            
-            # Process based on file type
-            if file.name.endswith(".pdf"):
-                loader = PyPDFLoader(temp_path)
-                documents.extend(loader.load())
-            elif file.name.endswith(".docx"):
-                loader = Docx2txtLoader(temp_path)
-                documents.extend(loader.load())
+    for file in uploaded_files:
+        # Save the uploaded file to a temporary file
+        temp_path = os.path.join(temp_dir.name, file.name)
+        with open(temp_path, "wb") as f:
+            f.write(file.getbuffer())
         
-        if not documents:
-            st.error("No valid documents were found. Please upload PDF or DOCX files.")
-            return None
-        
-        # Split documents into chunks with smaller chunk size and overlap
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
-        )
-        document_chunks = text_splitter.split_documents(documents)
-        
-        if not document_chunks:
-            st.error("Could not extract content from the documents.")
-            return None
-        
-        st.info(f"Processing {len(document_chunks)} document chunks...")
-        
-        try:
-            # Create embeddings with Gemini
-            embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",
-                google_api_key=gemini_api_key
-            )
-            
-            # Batch process embeddings with smaller batches to avoid payload limitations
-            vectorstore = FAISS.from_documents(
-                document_chunks, 
-                embeddings
-            )
-            
-            # Create conversation chain
-            memory = ConversationBufferMemory(
-                memory_key="chat_history",
-                return_messages=True
-            )
-            
-            conversation_chain = ConversationalRetrievalChain.from_llm(
-                llm=get_chat_model(),
-                retriever=vectorstore.as_retriever(),
-                memory=memory
-            )
-            
-            return conversation_chain
-        
-        except Exception as e:
-            st.error(f"Error creating embeddings: {str(e)}")
-            st.info("Try using a smaller chunk size or check your Google API key permissions.")
-            return None
+        # Process based on file type
+        if file.name.endswith(".pdf"):
+            loader = PyPDFLoader(temp_path)
+            documents.extend(loader.load())
+        elif file.name.endswith(".docx"):
+            loader = Docx2txtLoader(temp_path)
+            documents.extend(loader.load())
     
-    except Exception as e:
-        st.error(f"Error processing documents: {str(e)}")
-        return None
+    # Split documents into chunks
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap
+    )
+    document_chunks = text_splitter.split_documents(documents)
+    
+    # Create embeddings with Gemini instead of OpenAI
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/gemini-embedding-exp-03-07",
+        google_api_key=gemini_api_key
+    )
+    
+    # Create vector store with Gemini embeddings
+    vectorstore = FAISS.from_documents(document_chunks, embeddings)
+    
+    # Create conversation chain
+    memory = ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True
+    )
+    
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=get_chat_model(),
+        retriever=vectorstore.as_retriever(),
+        memory=memory
+    )
+    
+    return conversation_chain
 
 # App title
 st.markdown(
@@ -170,27 +132,12 @@ st.markdown(
     )
 
 # Sidebar
-st.sidebar.image("https://framerusercontent.com/images/3Ca34Pogzn9I3a7uTsNSlfs9Bdk.png", use_container_width=True)
+st.sidebar.image("https://framerusercontent.com/images/T5kFJeyNUyAYJBz4PaWuP7Bfr0.png", use_container_width=True)
 with st.sidebar:
     st.title("Settings")
     
-    # API key status indicators
-    st.subheader("API Key Status")
-    sutra_status = "✅ Connected" if api_key else "❌ Missing"
-    gemini_status = "✅ Connected" if gemini_api_key else "❌ Missing"
-    
-    st.info(f"Sutra API: {sutra_status}")
-    st.info(f"Google API: {gemini_status}")
-    
     # Language selector
     selected_language = st.selectbox("Select language for responses:", languages)
-    
-    # Advanced settings
-    with st.expander("Advanced Settings"):
-        chunk_size = st.slider("Chunk Size", min_value=200, max_value=2000, value=800, step=100, 
-                            help="Size of document chunks for processing. Smaller chunks may help with API limitations.")
-        chunk_overlap = st.slider("Chunk Overlap", min_value=0, max_value=200, value=50, step=10,
-                                help="Overlap between document chunks.")
     
     # Document uploader
     st.header("Upload Documents")
@@ -205,16 +152,11 @@ with st.sidebar:
         if st.button("Process Documents"):
             with st.spinner("Processing documents..."):
                 # Process documents and create conversation chain
-                st.session_state.conversation = process_documents(
-                    uploaded_files, 
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap
-                )
-                if st.session_state.conversation:
-                    st.session_state.documents_processed = True
-                    st.success(f"{len(uploaded_files)} documents processed!")
+                st.session_state.conversation = process_documents(uploaded_files)
+                st.session_state.documents_processed = True
+                st.success(f"{len(uploaded_files)} documents processed!")
     
-    st.divider()
+    
     st.markdown(f"Responses will be in: **{selected_language}**")
 
 # Main chat area
@@ -276,4 +218,6 @@ else:
                 st.session_state.messages.append({"role": "assistant", "content": answer})
                 
         except Exception as e:
-            st.error(f"Error generating response: {str(e)}")
+            st.error(f"Error: {str(e)}")
+            if "API key" in str(e):
+                st.error("Please check your API keys in the environment variables.")
